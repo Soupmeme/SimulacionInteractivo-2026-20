@@ -3,11 +3,11 @@
 Introducir la simulación computacional a partir de la aleatoriedad como principio generativo. En esta unidad se explorarán caminatas aleatorias, distribuciones de probabilidad, ruido y variación como recursos para producir sistemas visuales e interactivos.
 
 ## Reto de diseño
-Reto de diseño: Navegar la incertidumbre
-Encargo de diseño
+### Reto de diseño: Navegar la incertidumbre
+
 Un festival de ciencia y creatividad necesita una experiencia interactiva. Antes de ingresar al evento, los visitantes encontrarán una pantalla interactiva que debe introducir una idea central:
 
-La incertidumbre no es ausencia de reglas. Diferentes formas de aleatoriedad producen diferentes comportamientos y posibilidades.
+*La incertidumbre no es ausencia de reglas. Diferentes formas de aleatoriedad producen diferentes comportamientos y posibilidades.*
 
 La pregunta orientadora de diseño es:
 
@@ -17,11 +17,16 @@ La pregunta orientadora de diseño es:
 
 El sistema deberá interpretar los siguientes momentos:
 
-Posibilidad: todas las direcciones parecen posibles.
-Tendencia: una pequeña preferencia repetida termina construyendo una dirección.
-Normalidad: la mayoría de los recorridos permanece cerca de lo habitual.
-Excepción: un evento improbable permite descubrir un territorio nuevo.
-Influencia: la presencia del visitante transforma lo que puede ocurrir.
+**Posibilidad:** todas las direcciones parecen posibles.
+
+**Tendencia:** una pequeña preferencia repetida termina construyendo una dirección.
+
+**Normalidad:** la mayoría de los recorridos permanece cerca de lo habitual.
+
+**Excepción:** un evento improbable permite descubrir un territorio nuevo.
+
+**Influencia:** la presencia del visitante transforma lo que puede ocurrir.
+
 No debes ilustrar literalmente las frases. Debes traducirlas en comportamientos, trayectorias, ritmos, concentraciones o transformaciones.
 
 Condiciones de diseño
@@ -41,3 +46,7 @@ Dificultades y soluciones.
 Evidencias visuales y enlace al prototipo.
 Uso dado a la IA generativa y cambios realizados sobre sus propuestas.
 La bitácora debe mostrar evolución mediante control de versión. No se considera suficiente subir únicamente el resultado final.
+
+### Conceptualización
+
+
