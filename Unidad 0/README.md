@@ -49,11 +49,9 @@ La bitácora debe mostrar evolución mediante control de versión. No se conside
 
 ### Conceptualización
 
-El reto de diseño utiliza como ancla para el desarrollo el hecho de que esto es una pieza visual para un festival de ciencia y creatividad. Me gustaria implementar este concepto ancla en algo que utilice sistemas o recursos similares a los que se pueden observar en materia de ejemplos de la unidad 0 del libro. No solo porque ya me encuentro familiarizado con su comportamiento, si no que tambien me permite ejemplificar el concepto que quiero tratar: Un cielo estrellado.
+El reto de diseño utiliza como ancla para el desarrollo el hecho de que esto es una pieza visual para un festival de ciencia y creatividad. Me gustaria implementar este concepto ancla en algo que utilice sistemas o recursos similares a los que se pueden observar en materia de ejemplos de la unidad 0 del libro. No solo porque ya me encuentro familiarizado con su comportamiento, si no que tambien me permite ejemplificar el concepto que quiero tratar: Una convencion de astronomia, cuyo tema central son los agujeros negros. La manera en como funcionaria la experiencia visual seria similar a lo que se espera cuando se observan cuerpos celestiales; tienen un comportamiento "predecible" pero que ciertas anomalias indetectables, modifican su comportamiento temporalmente.
 
-No hay metafora que funcione mejor que los cuerpos celestiales para ejemplificar la incertidumbre. Ellos mismos estan ligados a leyes fisicas precisas, pero incluso en ese orden, sale a luz su belleza.
+No hay metafora que funcione mejor que los cuerpos celestiales para ejemplificar la incertidumbre. Ellos mismos estan ligados a leyes fisicas precisas, pero ciertas influencias externas alteran la manera en como se perciben.
 
-Estoy pensando en implementar una "sección de cielo" que permita ver estrellas en el cielo, donde, y de acuerdo a los requerimientos del reto, se observe como estan ligadas a un "control central" pero que no dependan enteramente de estas reglas para su funcionamiento. 
-
-El concepto de walker, explorado en la unidad, me permite trabajar esta idea de manera eficiente. Los comportamientos simples de los walker responden al comportamiento esperable de un cielo estrellado, y permite mediente otras reglas escondidas, cambiar su comportamiento si estos son influenciados de cierta manera. (La gravedad, el redshift, entre otros conceptos referentes a cuerpos celestiales.)
+El concepto de walker, explorado en la unidad, me permite trabajar esta idea de manera eficiente. Los comportamientos simples de los walker responden al comportamiento esperable de objetos celestiales, y permite mediente otras reglas escondidas, cambiar su comportamiento si estos son influenciados de cierta manera. (La gravedad, el redshift, entre otros conceptos referentes a cuerpos celestiales.)
 
