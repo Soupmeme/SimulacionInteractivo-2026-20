@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Navegar la incertidumbre — cielo nocturno</title>
+<title>Navegar la incertidumbre — consorcio de agujeros negros</title>
 <style>
   html, body { margin:0; padding:0; overflow:hidden; background:#0b0b12; }
   canvas { display:block; }
@@ -20,20 +20,25 @@ const N_WALKERS = 150;
 const STEP_MEAN = 1.6;
 const STEP_SD = 0.6;
 
-const JUMP_PROB = 0.012;        // "estrella fugaz": probabilidad fija, no depende de presence
+const JUMP_PROB = 0.012;        // evento de disrupción de marea: fijo, no depende de presence
 const JUMP_SIZE = 90;
 
 const MAX_TENDENCY_PROB = 0.5;
 const NOISE_STEP = 0.003;
+const WOBBLE_RANGE = 0.5;       // qué tanto puede desviarse del rumbo directo al centro
 
 const PRESENCE_RISE = 0.03;
 const PRESENCE_DECAY = 0.985;
 
 const TRAIL_ALPHA = 20;
 
+const EVENT_HORIZON_FRACTION = 0.045; // radio del horizonte, relativo al lado corto del canvas
+const GLOW_LAYERS = 4;
+
 let walkers = [];
 let presence = 0;
 let cw, ch;
+let horizonR;
 
 class Walker {
   constructor() {
@@ -43,7 +48,6 @@ class Walker {
     this.ty = random(1000) + 10000;
 
     this.isJump = false;
-    // puntos de inicio/fin del "trazo" de este frame, usados solo por show()
     this.streakX0 = this.x;
     this.streakY0 = this.y;
     this.streakX1 = this.x;
@@ -57,34 +61,51 @@ class Walker {
     this.isJump = false;
 
     if (r < JUMP_PROB) {
-      // ---------- EXCEPCIÓN / estrella fugaz ----------
+      // ---------- EXCEPCIÓN / disrupción de marea ----------
       this.isJump = true;
       this.x += random(-JUMP_SIZE, JUMP_SIZE);
       this.y += random(-JUMP_SIZE, JUMP_SIZE);
 
     } else if (r < JUMP_PROB + presence * MAX_TENDENCY_PROB) {
-      // ---------- TENDENCIA / corriente ----------
+      // ---------- TENDENCIA / atracción gravitacional ----------
+      // el rumbo YA NO es un ángulo libre de ruido: es el ángulo directo
+      // hacia el centro (atan2), y el ruido Perlin solo lo desvía un poco.
+      let toCenter = atan2(ch / 2 - this.y, cw / 2 - this.x);
       let n = noise(this.tx, this.ty);
-      let heading = map(n, 0, 1, 0, TWO_PI);
+      let wobble = map(n, 0, 1, -WOBBLE_RANGE, WOBBLE_RANGE);
+      let heading = toCenter + wobble;
       this.x += cos(heading) * STEP_MEAN;
       this.y += sin(heading) * STEP_MEAN;
       this.tx += NOISE_STEP;
       this.ty += NOISE_STEP;
 
     } else {
-      // ---------- POSIBILIDAD + NORMALIDAD / polvo cósmico ----------
+      // ---------- POSIBILIDAD + NORMALIDAD / materia dispersa ----------
       let dir = random(TWO_PI);
       let len = max(0.1, randomGaussian(STEP_MEAN, STEP_SD));
       this.x += cos(dir) * len;
       this.y += sin(dir) * len;
     }
 
-    // guardamos el trazo ANTES de envolver bordes, para que la estela
-    // se dibuje en línea recta y no cruce toda la pantalla si hubo wrap
     this.streakX0 = prevX;
     this.streakY0 = prevY;
     this.streakX1 = this.x;
     this.streakY1 = this.y;
+
+    // ---------- HORIZONTE DE EVENTOS ----------
+    // si quedó demasiado cerca del centro, se considera consumido:
+    // reaparece en un punto aleatorio. La materia se recicla, nunca se agota.
+    let dCenter = dist(this.x, this.y, cw / 2, ch / 2);
+    if (dCenter < horizonR) {
+      this.isJump = false; // el consumo es silencioso, sin estela
+      this.x = random(cw);
+      this.y = random(ch);
+      this.streakX0 = this.x;
+      this.streakY0 = this.y;
+      this.streakX1 = this.x;
+      this.streakY1 = this.y;
+      return;
+    }
 
     // el mundo es un toroide: sale por un borde, entra por el opuesto
     if (this.x < 0) this.x += cw;
@@ -95,7 +116,6 @@ class Walker {
 
   show() {
     if (this.isJump) {
-      // estela: un trazo ancho y tenue (glow) + uno fino y brillante (núcleo)
       stroke(255, 245, 210, 80);
       strokeWeight(4);
       line(this.streakX0, this.streakY0, this.streakX1, this.streakY1);
@@ -123,6 +143,7 @@ function setup() {
   cw = d.w; ch = d.h;
   pixelDensity(1);
   background(11, 11, 18);
+  updateHorizon();
 
   noiseSeed(random(100000));
   randomSeed(random(100000));
@@ -137,6 +158,7 @@ function windowResized() {
   resizeCanvas(d.w, d.h);
   cw = d.w; ch = d.h;
   background(11, 11, 18);
+  updateHorizon();
 }
 
 function fitCanvasSize() {
@@ -147,10 +169,25 @@ function fitCanvasSize() {
   return { w: floor(w), h: floor(h) };
 }
 
+function updateHorizon() {
+  horizonR = min(cw, ch) * EVENT_HORIZON_FRACTION;
+}
+
 function updatePresence() {
   let active = mouseIsPressed;
   if (active) presence = min(1, presence + PRESENCE_RISE);
   else presence *= PRESENCE_DECAY;
+}
+
+function drawBlackHole() {
+  noStroke();
+  for (let i = GLOW_LAYERS; i >= 1; i--) {
+    let r = horizonR * 1.8 + i * horizonR * 0.55;
+    fill(255, 170, 90, 16);
+    circle(cw / 2, ch / 2, r);
+  }
+  fill(6, 4, 9);
+  circle(cw / 2, ch / 2, horizonR * 1.5);
 }
 
 function draw() {
@@ -164,6 +201,9 @@ function draw() {
     w.step();
     w.show();
   }
+
+  // se dibuja al final para que siempre "tape" a la materia que cae detrás
+  drawBlackHole();
 }
 
 </script>
