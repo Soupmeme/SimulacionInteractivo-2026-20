@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Navegar la incertidumbre — consorcio de agujeros negros</title>
+<title>Navegar la incertidumbre — máquina de estados</title>
 <style>
   html, body { margin:0; padding:0; overflow:hidden; background:#0b0b12; }
   canvas { display:block; }
@@ -17,32 +17,45 @@ const ASPECT_W = 9;
 const ASPECT_H = 16;
 const N_WALKERS = 150;
 
-const STEP_MEAN = 1.6;
+const STEP_MEAN = 1.6;       // normalidad: paso típico, calmo
 const STEP_SD = 0.6;
 
-// En vez de fijar "probabilidad por partícula por frame" directamente,
-// se fija cuántos eventos de disrupción de marea se quieren VER en total,
-// por segundo, en todo el sistema. JUMP_PROB se calcula a partir de esto
-// en setup(), dividiendo entre N_WALKERS y el framerate (~60 fps).
-// Así, si más adelante cambian N_WALKERS, la frecuencia percibida NO cambia.
-const JUMP_EVENTS_PER_SECOND = 0.3; // ≈ un evento visible cada ~3.3 segundos
-const JUMP_SIZE = 90;
-let JUMP_PROB; // calculado en setup()
+const POSIB_MIN = 0.6;       // posibilidad: paso uniforme, amplio -> energético
+const POSIB_MAX = 4.5;
 
-const MAX_TENDENCY_PROB = 0.5;
+const WOBBLE_RANGE = 0.5;    // tendencia: desvío alrededor del rumbo al centro
+const INFLUENCIA_WOBBLE_MULT = 0.35; // influencia: pull más directo, menos disperso
+const INFLUENCIA_STEP_MULT = 1.4;    // influencia: pull más fuerte que la tendencia autónoma
 const NOISE_STEP = 0.003;
-const WOBBLE_RANGE = 0.5;
 
-const PRESENCE_RISE = 0.03;
-const PRESENCE_DECAY = 0.985;
+const JUMP_SIZE = 90;
+const EXCEPTION_EVENTS_PER_SECOND = 4; // solo durante el estado "excepción"
+let EXCEPTION_JUMP_PROB; // calculado en setup()
 
 const TRAIL_ALPHA = 20;
-
 const EVENT_HORIZON_FRACTION = 0.045;
 const GLOW_LAYERS = 4;
 
+// ---- máquina de estados ----
+const STATE_WEIGHTS = { posibilidad: 3, normalidad: 3, tendencia: 3, excepcion: 1 };
+const STATE_DURATION_SEC = {
+  posibilidad: [4, 7],
+  normalidad: [4, 7],
+  tendencia: [5, 8],
+  excepcion: [1.5, 2.5]
+};
+const STATE_COLOR = {
+  posibilidad: [230, 230, 255],
+  normalidad: [170, 190, 230],
+  tendencia: [190, 160, 255],
+  excepcion: [255, 220, 180],
+  influencia: [255, 205, 150]
+};
+
+let state = 'posibilidad';
+let stateTimer = 0;
+
 let walkers = [];
-let presence = 0;
 let cw, ch;
 let horizonR;
 
@@ -61,30 +74,42 @@ class Walker {
   }
 
   step() {
-    let r = random(1);
     let prevX = this.x;
     let prevY = this.y;
     this.isJump = false;
 
-    if (r < JUMP_PROB) {
-      // ---------- EXCEPCIÓN / disrupción de marea ----------
+    // el salto SOLO puede ocurrir durante el estado "excepción" —
+    // fuera de ese estado, la probabilidad es literalmente cero.
+    let jumpProb = (state === 'excepcion') ? EXCEPTION_JUMP_PROB : 0;
+
+    if (jumpProb > 0 && random(1) < jumpProb) {
+      // ---------- disrupción de marea ----------
       this.isJump = true;
       this.x += random(-JUMP_SIZE, JUMP_SIZE);
       this.y += random(-JUMP_SIZE, JUMP_SIZE);
 
-    } else if (r < JUMP_PROB + presence * MAX_TENDENCY_PROB) {
-      // ---------- TENDENCIA / atracción gravitacional ----------
+    } else if (state === 'tendencia' || state === 'influencia') {
+      // ---------- atracción gravitacional ----------
       let toCenter = atan2(ch / 2 - this.y, cw / 2 - this.x);
       let n = noise(this.tx, this.ty);
-      let wobble = map(n, 0, 1, -WOBBLE_RANGE, WOBBLE_RANGE);
+      let wobbleRange = (state === 'influencia') ? WOBBLE_RANGE * INFLUENCIA_WOBBLE_MULT : WOBBLE_RANGE;
+      let wobble = map(n, 0, 1, -wobbleRange, wobbleRange);
       let heading = toCenter + wobble;
-      this.x += cos(heading) * STEP_MEAN;
-      this.y += sin(heading) * STEP_MEAN;
+      let stepLen = (state === 'influencia') ? STEP_MEAN * INFLUENCIA_STEP_MULT : STEP_MEAN;
+      this.x += cos(heading) * stepLen;
+      this.y += sin(heading) * stepLen;
       this.tx += NOISE_STEP;
       this.ty += NOISE_STEP;
 
+    } else if (state === 'posibilidad') {
+      // ---------- dispersión total ----------
+      let dir = random(TWO_PI);
+      let len = random(POSIB_MIN, POSIB_MAX);
+      this.x += cos(dir) * len;
+      this.y += sin(dir) * len;
+
     } else {
-      // ---------- POSIBILIDAD + NORMALIDAD / materia dispersa ----------
+      // ---------- normalidad (y "excepción" cuando no le tocó saltar) ----------
       let dir = random(TWO_PI);
       let len = max(0.1, randomGaussian(STEP_MEAN, STEP_SD));
       this.x += cos(dir) * len;
@@ -96,7 +121,7 @@ class Walker {
     this.streakX1 = this.x;
     this.streakY1 = this.y;
 
-    // ---------- HORIZONTE DE EVENTOS ----------
+    // ---------- horizonte de eventos (independiente del estado) ----------
     let dCenter = dist(this.x, this.y, cw / 2, ch / 2);
     if (dCenter < horizonR) {
       this.isJump = false;
@@ -131,12 +156,54 @@ class Walker {
 
     } else {
       noStroke();
-      let bri = 190 + presence * 50;
-      fill(bri, 210 - presence * 40, 255, 150);
+      let c = STATE_COLOR[state];
+      fill(c[0], c[1], c[2], 150);
       circle(this.x, this.y, 2.2);
     }
   }
 }
+
+// ================= MÁQUINA DE ESTADOS =================
+
+function pickNextAutonomousState(exclude) {
+  let candidates = Object.keys(STATE_WEIGHTS).filter(s => s !== exclude);
+  let totalWeight = candidates.reduce((sum, s) => sum + STATE_WEIGHTS[s], 0);
+  let r = random(totalWeight);
+  let acc = 0;
+  for (let s of candidates) {
+    acc += STATE_WEIGHTS[s];
+    if (r < acc) return s;
+  }
+  return candidates[candidates.length - 1];
+}
+
+function durationFramesFor(s) {
+  let [lo, hi] = STATE_DURATION_SEC[s];
+  return floor(random(lo, hi) * 60); // asumiendo ~60 fps
+}
+
+function updateState() {
+  if (mouseIsPressed) {
+    // el clic SIEMPRE interrumpe el ciclo autónomo, sin importar en qué estado esté
+    state = 'influencia';
+    return;
+  }
+
+  if (state === 'influencia') {
+    // el visitante soltó: el mundo retoma su ciclo por su cuenta
+    state = pickNextAutonomousState(null);
+    stateTimer = durationFramesFor(state);
+    return;
+  }
+
+  stateTimer--;
+  if (stateTimer <= 0) {
+    state = pickNextAutonomousState(state);
+    stateTimer = durationFramesFor(state);
+  }
+}
+
+// ================= SETUP / DRAW =================
 
 function setup() {
   let d = fitCanvasSize();
@@ -149,9 +216,11 @@ function setup() {
   noiseSeed(random(100000));
   randomSeed(random(100000));
 
-  // probabilidad por partícula, por frame, derivada de la tasa deseada
-  // a nivel de todo el sistema (asumiendo ~60 fps, el default de p5.js)
-  JUMP_PROB = JUMP_EVENTS_PER_SECOND / (60 * N_WALKERS);
+  EXCEPTION_JUMP_PROB = EXCEPTION_EVENTS_PER_SECOND / (60 * N_WALKERS);
+
+  // estado inicial aleatorio -> cada ejecución arranca en un punto distinto del ciclo
+  state = random(Object.keys(STATE_WEIGHTS));
+  stateTimer = durationFramesFor(state);
 
   for (let i = 0; i < N_WALKERS; i++) {
     walkers.push(new Walker());
@@ -178,17 +247,16 @@ function updateHorizon() {
   horizonR = min(cw, ch) * EVENT_HORIZON_FRACTION;
 }
 
-function updatePresence() {
-  let active = mouseIsPressed;
-  if (active) presence = min(1, presence + PRESENCE_RISE);
-  else presence *= PRESENCE_DECAY;
-}
-
 function drawBlackHole() {
+  // el brillo del disco de acreción responde a si el sistema está
+  // activamente "atrayendo" materia en este momento (tendencia o influencia)
+  let activePull = (state === 'tendencia' || state === 'influencia');
+  let glowAlpha = activePull ? 26 : 14;
+
   noStroke();
   for (let i = GLOW_LAYERS; i >= 1; i--) {
     let r = horizonR * 1.8 + i * horizonR * 0.55;
-    fill(255, 170, 90, 16);
+    fill(255, 170, 90, glowAlpha);
     circle(cw / 2, ch / 2, r);
   }
   fill(6, 4, 9);
@@ -200,7 +268,7 @@ function draw() {
   fill(11, 11, 18, TRAIL_ALPHA);
   rect(0, 0, cw, ch);
 
-  updatePresence();
+  updateState();
 
   for (let w of walkers) {
     w.step();
