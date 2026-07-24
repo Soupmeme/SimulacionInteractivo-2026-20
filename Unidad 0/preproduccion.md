@@ -47,8 +47,7 @@ El sistema elige el siguiente estado autónomo al azar (ponderado, Excepción es
 - [x] Interacción cambia el estado del sistema, no una posición
 - [x] Visualmente activo sin interacción
 - [x] Varía por corrida sin perder identidad
-- [x] Dentro de las herramientas del Capítulo 0 (salvo la máquina de estados, pedida por el profesor)
 
 ---
 
-Decisiones, alternativas descartadas, dificultades encontradas y uso de IA generativa: ver `bitacora.md`.
+
