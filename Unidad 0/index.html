@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Navegar la incertidumbre — basado en Nature of Code, Cap. 0</title>
+<title>Navegar la incertidumbre — versión de escritorio</title>
 <style>
   html, body { margin:0; padding:0; overflow:hidden; background:#0b0b12; }
   canvas { display:block; }
@@ -17,36 +17,28 @@ const ASPECT_W = 9;
 const ASPECT_H = 16;
 const N_WALKERS = 150;
 
-const STEP_MEAN = 1.6;          // paso "típico" (normalidad)
-const STEP_SD = 0.6;            // qué tan apretada es la campana (normalidad)
+const STEP_MEAN = 1.6;
+const STEP_SD = 0.6;
 
-const JUMP_PROB = 0.012;        // probabilidad constante de un salto grande (excepción)
-const JUMP_SIZE = 90;           // qué tan lejos llega el salto
+const JUMP_PROB = 0.012;
+const JUMP_SIZE = 90;
 
-const MAX_TENDENCY_PROB = 0.5;  // techo de probabilidad de "tendencia" cuando presence = 1
-const NOISE_STEP = 0.003;       // qué tan rápido avanza el offset de ruido
+const MAX_TENDENCY_PROB = 0.5;
+const NOISE_STEP = 0.003;
 
 const PRESENCE_RISE = 0.03;
 const PRESENCE_DECAY = 0.985;
 
-const TRAIL_ALPHA = 20;         // menor = colas más largas
+const TRAIL_ALPHA = 20;
 
 let walkers = [];
-let presence = 0; // 0 = solo posibilidad/normalidad, 1 = tendencia fuerte y sostenida
+let presence = 0;
 let cw, ch;
 
-// ---------------------------------------------------------------
-// Walker: misma estructura de clase que el libro (constructor + step + show),
-// pero step() ahora elige entre TRES comportamientos posibles cada frame,
-// como en el ejemplo del libro que elige entre "Sing/Dance/Sleep" según
-// en qué rango cae random(1).
-// ---------------------------------------------------------------
 class Walker {
   constructor() {
     this.x = random(cw);
     this.y = random(ch);
-    // dos offsets de ruido 1D independientes, igual que this.tx / this.ty
-    // en el Example 0.6 del libro (para que x e y no queden pegados)
     this.tx = random(1000);
     this.ty = random(1000) + 10000;
   }
@@ -55,17 +47,10 @@ class Walker {
     let r = random(1);
 
     if (r < JUMP_PROB) {
-      // ---------- EXCEPCIÓN ----------
-      // Probabilidad baja y CONSTANTE, independiente de presence.
-      // Un evento improbable que puede pasar en cualquier momento.
       this.x += random(-JUMP_SIZE, JUMP_SIZE);
       this.y += random(-JUMP_SIZE, JUMP_SIZE);
 
     } else if (r < JUMP_PROB + presence * MAX_TENDENCY_PROB) {
-      // ---------- TENDENCIA ----------
-      // Este rango solo existe (y crece) cuando hay presencia del visitante.
-      // La dirección viene de ruido Perlin, así que la "preferencia repetida"
-      // se ve suave y coherente, no errática.
       let n = noise(this.tx, this.ty);
       let heading = map(n, 0, 1, 0, TWO_PI);
       this.x += cos(heading) * STEP_MEAN;
@@ -74,17 +59,12 @@ class Walker {
       this.ty += NOISE_STEP;
 
     } else {
-      // ---------- POSIBILIDAD + NORMALIDAD ----------
-      // El caso de todos los días: cualquier dirección es posible (uniforme),
-      // pero el TAMAÑO del paso sigue una distribución normal (randomGaussian),
-      // igual que el Exercise 0.5 del libro ("Gaussian random walk").
       let dir = random(TWO_PI);
       let len = max(0.1, randomGaussian(STEP_MEAN, STEP_SD));
       this.x += cos(dir) * len;
       this.y += sin(dir) * len;
     }
 
-    // el mundo es un toroide: sale por un borde, entra por el opuesto
     if (this.x < 0) this.x += cw;
     if (this.x > cw) this.x -= cw;
     if (this.y < 0) this.y += ch;
@@ -130,10 +110,8 @@ function fitCanvasSize() {
 }
 
 function updatePresence() {
-  // INFLUENCIA: el visitante mueve una probabilidad (el techo de "tendencia"),
-  // nunca una posición. Decae solo -> el sistema no depende de que alguien
-  // esté tocando la pantalla para seguir vivo.
-  let active = (touches.length > 0) || mouseIsPressed;
+  // Solo mouse: pensado para escritorio (mouse o trackpad), no pantalla táctil.
+  let active = mouseIsPressed;
   if (active) presence = min(1, presence + PRESENCE_RISE);
   else presence *= PRESENCE_DECAY;
 }
@@ -150,9 +128,6 @@ function draw() {
     w.show();
   }
 }
-
-function touchStarted() { return false; }
-function touchMoved() { return false; }
 
 </script>
 </body>
