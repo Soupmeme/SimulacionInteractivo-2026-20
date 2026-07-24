@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Navegar la incertidumbre — starter</title>
+<style>
+  html, body { margin:0; padding:0; overflow:hidden; background:#0b0b12; }
+  canvas { display:block; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+</head>
+<body>
+<script>
+
+// ================= CONFIG =================
+// Estos números son los "diales" del sistema. Cambiarlos cambia
+// completamente la personalidad de la pieza sin tocar la lógica.
+const ASPECT_W = 9;
+const ASPECT_H = 16;
+const N_PARTICLES = 220;
+const BASE_STEP = 1.4;          // longitud media del paso (normalidad)
+const STEP_SD = 0.5;            // dispersión del paso (qué tan "normal" es la normal)
+const JUMP_PROB = 0.01;         // probabilidad de salto grande por frame (excepción)
+const JUMP_MIN = 8;
+const JUMP_MAX = 22;
+const NOISE_SCALE = 0.004;      // escala espacial del campo de Perlin
+const NOISE_TIME = 0.0015;      // velocidad de cambio del campo en el tiempo
+const PRESENCE_RISE = 0.03;     // qué tan rápido sube la influencia al tocar
+const PRESENCE_DECAY = 0.985;   // qué tan rápido decae sin interacción
+const TRAIL_ALPHA = 18;         // menor = colas más largas / más rastro
+
+let particles = [];
+let presence = 0; // 0 = pura posibilidad, 1 = fuerte tendencia consolidada
+let cw, ch;
+
+function setup() {
+  let d = fitCanvasSize();
+  createCanvas(d.w, d.h);
+  cw = d.w; ch = d.h;
+  pixelDensity(1);
+  background(11, 11, 18);
+
+  // cada ejecución arranca en un punto distinto del ruido y del random
+  // -> misma identidad visual, variación garantizada por corrida
+  noiseSeed(random(100000));
+  randomSeed(random(100000));
+
+  for (let i = 0; i < N_PARTICLES; i++) {
+    particles.push(makeParticle());
+  }
+}
+
+function makeParticle() {
+  return {
+    x: random(cw),
+    y: random(ch),
+    seed: random(1000),   // desfase individual en el campo de ruido
+    a: random(TWO_PI)     // dirección inicial
+  };
+}
+
+function windowResized() {
+  let d = fitCanvasSize();
+  resizeCanvas(d.w, d.h);
+  cw = d.w; ch = d.h;
+  background(11, 11, 18);
+}
+
+function fitCanvasSize() {
+  // Mantiene proporción 9:16 ajustada a la ventana disponible
+  let targetRatio = ASPECT_W / ASPECT_H;
+  let w = windowWidth, h = windowHeight;
+  if (w / h > targetRatio) {
+    w = h * targetRatio;
+  } else {
+    h = w / targetRatio;
+  }
+  return { w: floor(w), h: floor(h) };
+}
+
+function updatePresence() {
+  // Esto es "influencia": el visitante mueve una probabilidad,
+  // no una posición. Y decae solo, así el sistema nunca depende
+  // de que alguien esté interactuando.
+  let active = (touches.length > 0) || mouseIsPressed;
+  if (active) {
+    presence = min(1, presence + PRESENCE_RISE);
+  } else {
+    presence *= PRESENCE_DECAY;
+  }
+}
+
+function pointerPos() {
+  if (touches.length > 0) return { x: touches[0].x, y: touches[0].y };
+  if (mouseIsPressed) return { x: mouseX, y: mouseY };
+  return null;
+}
+
+function draw() {
+  // rastro: rectángulo semitransparente en vez de limpiar el fondo
+  noStroke();
+  fill(11, 11, 18, TRAIL_ALPHA);
+  rect(0, 0, cw, ch);
+
+  updatePresence();
+  let pointer = pointerPos();
+
+  for (let particle of particles) {
+    stepParticle(particle, pointer);
+  }
+}
+
+function stepParticle(particle, pointer) {
+  // -------- influencia local --------
+  // Las partículas cerca del toque sienten más "tendencia" que las lejanas,
+  // pero incluso lejos hay un piso de influencia general (presence).
+  let localPresence = presence;
+  if (pointer) {
+    let d = dist(particle.x, particle.y, pointer.x, pointer.y);
+    let radius = min(cw, ch) * 0.35;
+    let closeness = constrain(1 - d / radius, 0, 1);
+    localPresence = constrain(max(presence, presence * closeness + closeness * 0.6), 0, 1);
+  }
+
+  // -------- dirección: posibilidad (azar) vs tendencia (campo de Perlin) --------
+  let randomAngle = particle.a + random(-0.6, 0.6);
+  let n = noise(particle.x * NOISE_SCALE, particle.y * NOISE_SCALE,
+                 frameCount * NOISE_TIME + particle.seed);
+  let noiseAngle = n * TWO_PI * 2;
+
+  let angle = lerpAngle(randomAngle, noiseAngle, localPresence);
+  particle.a = angle;
+
+  // -------- longitud de paso: distribución normal (normalidad) --------
+  let stepLen = randomGaussian(BASE_STEP, STEP_SD);
+  stepLen = max(0.1, stepLen);
+
+  // -------- excepción: salto grande, raro e independiente de la presencia --------
+  if (random() < JUMP_PROB) {
+    stepLen *= random(JUMP_MIN, JUMP_MAX);
+  }
+
+  particle.x += cos(angle) * stepLen;
+  particle.y += sin(angle) * stepLen;
+
+  // sale por un borde, entra por el opuesto: el sistema no "se acaba"
+  if (particle.x < 0) particle.x += cw;
+  if (particle.x > cw) particle.x -= cw;
+  if (particle.y < 0) particle.y += ch;
+  if (particle.y > ch) particle.y -= ch;
+
+  // color: más presencia local = más cálido/brillante (sutil, no literal)
+  let bri = 180 + localPresence * 60;
+  fill(bri, 200 - localPresence * 40, 255, 160);
+  noStroke();
+  circle(particle.x, particle.y, 2.2);
+}
+
+function lerpAngle(a, b, t) {
+  // interpola entre dos ángulos por el camino más corto (evita saltos de 2π)
+  let diff = ((b - a + PI) % TWO_PI + TWO_PI) % TWO_PI - PI;
+  return a + diff * t;
+}
+
+// evita comportamientos por defecto del navegador (scroll/zoom) en pantallas táctiles
+function touchStarted() { return false; }
+function touchMoved() { return false; }
+
+</script>
+</body>
+</html>
