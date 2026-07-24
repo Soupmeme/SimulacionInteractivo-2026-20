@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Navegar la incertidumbre — máquina de estados</title>
+<title>Navegar la incertidumbre — máquina de estados (orgánica, con masa)</title>
 <style>
   html, body { margin:0; padding:0; overflow:hidden; background:#0b0b12; }
   canvas { display:block; }
@@ -17,26 +17,26 @@ const ASPECT_W = 9;
 const ASPECT_H = 16;
 const N_WALKERS = 150;
 
-const STEP_MEAN = 1.6;       // normalidad: paso típico, calmo
+const STEP_MEAN = 1.6;
 const STEP_SD = 0.6;
 
-const POSIB_MIN = 0.6;       // posibilidad: paso uniforme, amplio -> energético
+const POSIB_MIN = 0.6;
 const POSIB_MAX = 4.5;
 
-const WOBBLE_RANGE = 0.5;    // tendencia: desvío alrededor del rumbo al centro
-const INFLUENCIA_WOBBLE_MULT = 0.35; // influencia: pull más directo, menos disperso
-const INFLUENCIA_STEP_MULT = 1.4;    // influencia: pull más fuerte que la tendencia autónoma
+const WOBBLE_RANGE = 0.5;
+const INFLUENCIA_WOBBLE_MULT = 0.35;
+const INFLUENCIA_STEP_MULT = 1.4;
 const NOISE_STEP = 0.003;
 
 const JUMP_SIZE = 90;
-const EXCEPTION_EVENTS_PER_SECOND = 4; // solo durante el estado "excepción"
-let EXCEPTION_JUMP_PROB; // calculado en setup()
+const EXCEPTION_EVENTS_PER_SECOND = 4;
+let EXCEPTION_JUMP_PROB;
 
 const TRAIL_ALPHA = 20;
 const EVENT_HORIZON_FRACTION = 0.045;
 const GLOW_LAYERS = 4;
 
-// ---- máquina de estados ----
+// ---- máquina de estados (nivel sistema) ----
 const STATE_WEIGHTS = { posibilidad: 3, normalidad: 3, tendencia: 3, excepcion: 1 };
 const STATE_DURATION_SEC = {
   posibilidad: [4, 7],
@@ -52,12 +52,34 @@ const STATE_COLOR = {
   influencia: [255, 205, 150]
 };
 
+// ---- adopción escalonada ----
+const AUTONOMOUS_STAGGER_FRAMES = 75;
+const INFLUENCIA_STAGGER_FRAMES = 18;
+const STAGGER_JITTER = 20;
+const PERSONALITY_MIN = 0.75;
+const PERSONALITY_MAX = 1.3;
+
+// ---- masa: variación entre "estrellas" ----
+const MASS_MIN = 0.7;
+const MASS_MAX = 1.6;
+const SIZE_MIN = 1.6;         // diámetro visual, sutil
+const SIZE_MAX = 3.0;
+const ALPHA_MIN = 120;
+const ALPHA_MAX = 190;
+const PULL_MASS_MIN = 0.9;    // qué tan más/menos fuerte cae hacia el centro
+const PULL_MASS_MAX = 1.25;
+const WOBBLE_MASS_MIN = 0.75; // más masa = menos desvío (cae más "derecho")
+const WOBBLE_MASS_MAX = 1.15;
+const JUMP_MASS_MIN = 0.8;    // más masa = más resistencia al salto de excepción
+const JUMP_MASS_MAX = 1.15;
+
 let state = 'posibilidad';
 let stateTimer = 0;
 
 let walkers = [];
 let cw, ch;
 let horizonR;
+let maxDistFromCenter;
 
 class Walker {
   constructor() {
@@ -65,6 +87,21 @@ class Walker {
     this.y = random(ch);
     this.tx = random(1000);
     this.ty = random(1000) + 10000;
+
+    this.personality = random(PERSONALITY_MIN, PERSONALITY_MAX);
+
+    // masa: fija a esta estrella, deriva tamaño, brillo y cómo responde a la gravedad
+    this.mass = random(MASS_MIN, MASS_MAX);
+    this.size = map(this.mass, MASS_MIN, MASS_MAX, SIZE_MIN, SIZE_MAX);
+    this.alpha = map(this.mass, MASS_MIN, MASS_MAX, ALPHA_MIN, ALPHA_MAX);
+    this.pullMult = map(this.mass, MASS_MIN, MASS_MAX, PULL_MASS_MIN, PULL_MASS_MAX);
+    // rangos de salida invertidos a propósito: a más masa, MENOS wobble y MENOS desplazamiento por salto
+    this.wobbleMult = map(this.mass, MASS_MIN, MASS_MAX, WOBBLE_MASS_MAX, WOBBLE_MASS_MIN);
+    this.jumpMult = map(this.mass, MASS_MIN, MASS_MAX, JUMP_MASS_MAX, JUMP_MASS_MIN);
+
+    this.behaviorState = state;
+    this.knownGlobalState = state;
+    this.adoptAt = 0;
 
     this.isJump = false;
     this.streakX0 = this.x;
@@ -74,44 +111,55 @@ class Walker {
   }
 
   step() {
+    if (state !== this.knownGlobalState) {
+      this.knownGlobalState = state;
+      let d = dist(this.x, this.y, cw / 2, ch / 2);
+      let staggerMax = (state === 'influencia') ? INFLUENCIA_STAGGER_FRAMES : AUTONOMOUS_STAGGER_FRAMES;
+      let lag = map(d, 0, maxDistFromCenter, 0, staggerMax);
+      this.adoptAt = frameCount + lag + random(-STAGGER_JITTER, STAGGER_JITTER);
+    }
+    if (frameCount >= this.adoptAt) {
+      this.behaviorState = state;
+    }
+
     let prevX = this.x;
     let prevY = this.y;
     this.isJump = false;
 
-    // el salto SOLO puede ocurrir durante el estado "excepción" —
-    // fuera de ese estado, la probabilidad es literalmente cero.
-    let jumpProb = (state === 'excepcion') ? EXCEPTION_JUMP_PROB : 0;
+    let jumpProb = (this.behaviorState === 'excepcion') ? EXCEPTION_JUMP_PROB : 0;
 
     if (jumpProb > 0 && random(1) < jumpProb) {
-      // ---------- disrupción de marea ----------
+      // ---------- disrupción de marea (más masa = más resistencia) ----------
       this.isJump = true;
-      this.x += random(-JUMP_SIZE, JUMP_SIZE);
-      this.y += random(-JUMP_SIZE, JUMP_SIZE);
+      this.x += random(-JUMP_SIZE, JUMP_SIZE) * this.jumpMult;
+      this.y += random(-JUMP_SIZE, JUMP_SIZE) * this.jumpMult;
 
-    } else if (state === 'tendencia' || state === 'influencia') {
-      // ---------- atracción gravitacional ----------
+    } else if (this.behaviorState === 'tendencia' || this.behaviorState === 'influencia') {
+      // ---------- atracción gravitacional (más masa = más directa) ----------
       let toCenter = atan2(ch / 2 - this.y, cw / 2 - this.x);
       let n = noise(this.tx, this.ty);
-      let wobbleRange = (state === 'influencia') ? WOBBLE_RANGE * INFLUENCIA_WOBBLE_MULT : WOBBLE_RANGE;
+      let baseWobble = (this.behaviorState === 'influencia') ? WOBBLE_RANGE * INFLUENCIA_WOBBLE_MULT : WOBBLE_RANGE;
+      let wobbleRange = baseWobble * this.wobbleMult;
       let wobble = map(n, 0, 1, -wobbleRange, wobbleRange);
       let heading = toCenter + wobble;
-      let stepLen = (state === 'influencia') ? STEP_MEAN * INFLUENCIA_STEP_MULT : STEP_MEAN;
+      let stepLen = (this.behaviorState === 'influencia') ? STEP_MEAN * INFLUENCIA_STEP_MULT : STEP_MEAN;
+      stepLen *= this.personality * this.pullMult;
       this.x += cos(heading) * stepLen;
       this.y += sin(heading) * stepLen;
       this.tx += NOISE_STEP;
       this.ty += NOISE_STEP;
 
-    } else if (state === 'posibilidad') {
+    } else if (this.behaviorState === 'posibilidad') {
       // ---------- dispersión total ----------
       let dir = random(TWO_PI);
-      let len = random(POSIB_MIN, POSIB_MAX);
+      let len = random(POSIB_MIN, POSIB_MAX) * this.personality;
       this.x += cos(dir) * len;
       this.y += sin(dir) * len;
 
     } else {
       // ---------- normalidad (y "excepción" cuando no le tocó saltar) ----------
       let dir = random(TWO_PI);
-      let len = max(0.1, randomGaussian(STEP_MEAN, STEP_SD));
+      let len = max(0.1, randomGaussian(STEP_MEAN, STEP_SD)) * this.personality;
       this.x += cos(dir) * len;
       this.y += sin(dir) * len;
     }
@@ -121,7 +169,6 @@ class Walker {
     this.streakX1 = this.x;
     this.streakY1 = this.y;
 
-    // ---------- horizonte de eventos (independiente del estado) ----------
     let dCenter = dist(this.x, this.y, cw / 2, ch / 2);
     if (dCenter < horizonR) {
       this.isJump = false;
@@ -156,14 +203,14 @@ class Walker {
 
     } else {
       noStroke();
-      let c = STATE_COLOR[state];
-      fill(c[0], c[1], c[2], 150);
-      circle(this.x, this.y, 2.2);
+      let c = STATE_COLOR[this.behaviorState];
+      fill(c[0], c[1], c[2], this.alpha);
+      circle(this.x, this.y, this.size);
     }
   }
 }
 
-// ================= MÁQUINA DE ESTADOS =================
+// ================= MÁQUINA DE ESTADOS (nivel sistema) =================
 
 function pickNextAutonomousState(exclude) {
   let candidates = Object.keys(STATE_WEIGHTS).filter(s => s !== exclude);
@@ -179,18 +226,16 @@ function pickNextAutonomousState(exclude) {
 
 function durationFramesFor(s) {
   let [lo, hi] = STATE_DURATION_SEC[s];
-  return floor(random(lo, hi) * 60); // asumiendo ~60 fps
+  return floor(random(lo, hi) * 60);
 }
 
 function updateState() {
   if (mouseIsPressed) {
-    // el clic SIEMPRE interrumpe el ciclo autónomo, sin importar en qué estado esté
     state = 'influencia';
     return;
   }
 
   if (state === 'influencia') {
-    // el visitante soltó: el mundo retoma su ciclo por su cuenta
     state = pickNextAutonomousState(null);
     stateTimer = durationFramesFor(state);
     return;
@@ -218,7 +263,6 @@ function setup() {
 
   EXCEPTION_JUMP_PROB = EXCEPTION_EVENTS_PER_SECOND / (60 * N_WALKERS);
 
-  // estado inicial aleatorio -> cada ejecución arranca en un punto distinto del ciclo
   state = random(Object.keys(STATE_WEIGHTS));
   stateTimer = durationFramesFor(state);
 
@@ -245,11 +289,10 @@ function fitCanvasSize() {
 
 function updateHorizon() {
   horizonR = min(cw, ch) * EVENT_HORIZON_FRACTION;
+  maxDistFromCenter = dist(0, 0, cw / 2, ch / 2);
 }
 
 function drawBlackHole() {
-  // el brillo del disco de acreción responde a si el sistema está
-  // activamente "atrayendo" materia en este momento (tendencia o influencia)
   let activePull = (state === 'tendencia' || state === 'influencia');
   let glowAlpha = activePull ? 26 : 14;
 
