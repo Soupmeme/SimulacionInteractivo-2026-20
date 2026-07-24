@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>Navegar la incertidumbre — versión de escritorio</title>
+<title>Navegar la incertidumbre — cielo nocturno</title>
 <style>
   html, body { margin:0; padding:0; overflow:hidden; background:#0b0b12; }
   canvas { display:block; }
@@ -20,7 +20,7 @@ const N_WALKERS = 150;
 const STEP_MEAN = 1.6;
 const STEP_SD = 0.6;
 
-const JUMP_PROB = 0.012;
+const JUMP_PROB = 0.012;        // "estrella fugaz": probabilidad fija, no depende de presence
 const JUMP_SIZE = 90;
 
 const MAX_TENDENCY_PROB = 0.5;
@@ -41,16 +41,29 @@ class Walker {
     this.y = random(ch);
     this.tx = random(1000);
     this.ty = random(1000) + 10000;
+
+    this.isJump = false;
+    // puntos de inicio/fin del "trazo" de este frame, usados solo por show()
+    this.streakX0 = this.x;
+    this.streakY0 = this.y;
+    this.streakX1 = this.x;
+    this.streakY1 = this.y;
   }
 
   step() {
     let r = random(1);
+    let prevX = this.x;
+    let prevY = this.y;
+    this.isJump = false;
 
     if (r < JUMP_PROB) {
+      // ---------- EXCEPCIÓN / estrella fugaz ----------
+      this.isJump = true;
       this.x += random(-JUMP_SIZE, JUMP_SIZE);
       this.y += random(-JUMP_SIZE, JUMP_SIZE);
 
     } else if (r < JUMP_PROB + presence * MAX_TENDENCY_PROB) {
+      // ---------- TENDENCIA / corriente ----------
       let n = noise(this.tx, this.ty);
       let heading = map(n, 0, 1, 0, TWO_PI);
       this.x += cos(heading) * STEP_MEAN;
@@ -59,12 +72,21 @@ class Walker {
       this.ty += NOISE_STEP;
 
     } else {
+      // ---------- POSIBILIDAD + NORMALIDAD / polvo cósmico ----------
       let dir = random(TWO_PI);
       let len = max(0.1, randomGaussian(STEP_MEAN, STEP_SD));
       this.x += cos(dir) * len;
       this.y += sin(dir) * len;
     }
 
+    // guardamos el trazo ANTES de envolver bordes, para que la estela
+    // se dibuje en línea recta y no cruce toda la pantalla si hubo wrap
+    this.streakX0 = prevX;
+    this.streakY0 = prevY;
+    this.streakX1 = this.x;
+    this.streakY1 = this.y;
+
+    // el mundo es un toroide: sale por un borde, entra por el opuesto
     if (this.x < 0) this.x += cw;
     if (this.x > cw) this.x -= cw;
     if (this.y < 0) this.y += ch;
@@ -72,10 +94,26 @@ class Walker {
   }
 
   show() {
-    noStroke();
-    let bri = 190 + presence * 50;
-    fill(bri, 210 - presence * 40, 255, 150);
-    circle(this.x, this.y, 2.2);
+    if (this.isJump) {
+      // estela: un trazo ancho y tenue (glow) + uno fino y brillante (núcleo)
+      stroke(255, 245, 210, 80);
+      strokeWeight(4);
+      line(this.streakX0, this.streakY0, this.streakX1, this.streakY1);
+
+      stroke(255, 250, 230, 230);
+      strokeWeight(1.2);
+      line(this.streakX0, this.streakY0, this.streakX1, this.streakY1);
+
+      noStroke();
+      fill(255, 255, 245);
+      circle(this.streakX1, this.streakY1, 3.5);
+
+    } else {
+      noStroke();
+      let bri = 190 + presence * 50;
+      fill(bri, 210 - presence * 40, 255, 150);
+      circle(this.x, this.y, 2.2);
+    }
   }
 }
 
@@ -110,7 +148,6 @@ function fitCanvasSize() {
 }
 
 function updatePresence() {
-  // Solo mouse: pensado para escritorio (mouse o trackpad), no pantalla táctil.
   let active = mouseIsPressed;
   if (active) presence = min(1, presence + PRESENCE_RISE);
   else presence *= PRESENCE_DECAY;
